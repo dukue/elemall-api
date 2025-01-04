@@ -10,12 +10,12 @@ const ExchangeRate = sequelize.define('ExchangeRate', {
   fromCurrency: {
     type: DataTypes.STRING(3),
     allowNull: false,
-    comment: '源币种代码，如: USD'
+    comment: '源币种'
   },
   toCurrency: {
     type: DataTypes.STRING(3),
     allowNull: false,
-    comment: '目标币种代码，如: CNY'
+    comment: '目标币种'
   },
   rate: {
     type: DataTypes.DECIMAL(10, 6),
@@ -27,18 +27,13 @@ const ExchangeRate = sequelize.define('ExchangeRate', {
   },
   isActive: {
     type: DataTypes.BOOLEAN,
+    allowNull: false,
     defaultValue: true,
     comment: '是否启用'
   }
 }, {
   createdAt: 'createTime',
-  updatedAt: 'updateTime',
-  indexes: [
-    {
-      unique: true,
-      fields: ['fromCurrency', 'toCurrency']
-    }
-  ]
+  updatedAt: 'updateTime'
 });
 
 module.exports = ExchangeRate; 

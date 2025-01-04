@@ -44,7 +44,7 @@ exports.createRate = async (req, res) => {
   try {
     const { fromCurrency, toCurrency, rate } = req.body;
 
-    // 检查是否已存在相同的币���对
+    // 检查是否已存在相同的币种对
     const existingRate = await ExchangeRate.findOne({
       where: {
         fromCurrency,
@@ -94,38 +94,60 @@ exports.updateRate = async (req, res) => {
   
   try {
     const { id } = req.params;
-    const { rate } = req.body;
+    const { isActive, rate } = req.body;
 
-    const exchangeRate = await ExchangeRate.findByPk(id);
-    if (!exchangeRate) {
+    // 查找当前汇率记录
+    const currentRate = await ExchangeRate.findByPk(id);
+    
+    if (!currentRate) {
       return res.status(404).json({
         code: 404,
         message: '汇率不存在'
       });
     }
 
-    // 更新汇率
-    await exchangeRate.update({ rate }, { transaction });
+    // 准备更新数据
+    const updateData = {};
+    if (isActive !== undefined) {
+      updateData.isActive = isActive;
+    }
+    if (rate !== undefined) {
+      updateData.rate = rate;
+    }
 
-    // 更新反向汇率
-    await ExchangeRate.update(
-      { rate: 1 / rate },
-      {
-        where: {
-          fromCurrency: exchangeRate.toCurrency,
-          toCurrency: exchangeRate.fromCurrency
-        },
-        transaction
+    // 更新汇率
+    await currentRate.update(updateData, { transaction });
+
+    // 查找并更新反向汇率
+    const reverseRate = await ExchangeRate.findOne({
+      where: {
+        fromCurrency: currentRate.toCurrency,
+        toCurrency: currentRate.fromCurrency
       }
-    );
+    });
+
+    if (reverseRate) {
+      const reverseUpdateData = {};
+      if (isActive !== undefined) {
+        reverseUpdateData.isActive = isActive;
+      }
+      if (rate !== undefined) {
+        reverseUpdateData.rate = 1 / rate;
+      }
+      await reverseRate.update(reverseUpdateData, { transaction });
+    }
 
     await transaction.commit();
+
+    // 获取更新后的完整数据
+    const updatedRate = await ExchangeRate.findByPk(id);
 
     res.json({
       code: 200,
       message: '汇率更新成功',
-      data: exchangeRate
+      data: updatedRate
     });
+
   } catch (error) {
     await transaction.rollback();
     console.error('Update rate error:', error);
