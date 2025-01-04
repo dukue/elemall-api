@@ -192,4 +192,46 @@ exports.uploadCustomsDocument = async (req, res) => {
       message: '服务器错误'
     });
   }
+};
+
+exports.downloadCustomsDocument = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 查找文件记录
+    const document = await CustomsDocument.findByPk(id);
+    if (!document) {
+      return res.status(404).json({
+        code: 404,
+        message: '文件不存在'
+      });
+    }
+
+    // 构建文件的完整路径
+    const filePath = path.join(__dirname, '..', document.path);
+
+    // 设置文件名，处理中文文件名
+    const fileName = encodeURIComponent(document.name);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${fileName}`);
+    
+    // 发送文件
+    res.download(filePath, fileName, (err) => {
+      if (err) {
+        console.error('Download file error:', err);
+        // 如果文件已经开始传输，就不发送错误响应
+        if (!res.headersSent) {
+          res.status(500).json({
+            code: 500,
+            message: '文件下载失败'
+          });
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Download customs document error:', error);
+    res.status(500).json({
+      code: 500,
+      message: '服务器错误'
+    });
+  }
 }; 

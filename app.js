@@ -38,6 +38,9 @@ app.use('/api/v1', categoryRoutes);
 // 错误处理
 app.use(errorHandler);
 
+// 添加静态文件服务
+app.use('/uploads', express.static('uploads'));
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

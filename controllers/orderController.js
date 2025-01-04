@@ -5,14 +5,23 @@ const OrderProduct = require('../models/OrderProduct');
 
 exports.getOrders = async (req, res) => {
   try {
-    const { query = '', startDate, endDate, pagenum = 1, pagesize = 10 } = req.query;
+    const { query = '', status, startDate, endDate, pagenum = 1, pagesize = 10 } = req.query;
     const offset = (pagenum - 1) * pagesize;
 
     // 构建查询条件
     const whereClause = {};
+    
+    // 添加订单号搜索条件
     if (query) {
       whereClause.orderNo = { [Op.like]: `%${query}%` };
     }
+
+    // 添加订单状态筛选条件
+    if (status && ['pending', 'processing', 'completed', 'cancelled'].includes(status)) {
+      whereClause.status = status;
+    }
+
+    // 添加日期范围筛选条件
     if (startDate && endDate) {
       whereClause.createTime = {
         [Op.between]: [new Date(startDate), new Date(endDate)]
@@ -40,14 +49,18 @@ exports.getOrders = async (req, res) => {
       createTime: order.createTime,
       totalAmount: order.totalAmount,
       status: order.status,
+      statusText: getStatusText(order.status), // 添加状态的中文描述
       payMethod: order.payMethod,
+      payMethodText: getPayMethodText(order.payMethod), // 添加支付方式的中文描述
       receiver: order.receiver,
       phone: order.phone,
       address: order.address,
       products: order.Products.map(product => ({
+        id: product.id,
         name: product.name,
         price: product.OrderProduct.price,
-        quantity: product.OrderProduct.quantity
+        quantity: product.OrderProduct.quantity,
+        subtotal: Number(product.OrderProduct.price) * product.OrderProduct.quantity
       }))
     }));
 
@@ -66,6 +79,27 @@ exports.getOrders = async (req, res) => {
       message: '服务器错误'
     });
   }
+};
+
+// 获取订单状态的中文描述
+const getStatusText = (status) => {
+  const statusMap = {
+    'pending': '待发货',
+    'processing': '已发货',
+    'completed': '已完成',
+    'cancelled': '已取消'
+  };
+  return statusMap[status] || status;
+};
+
+// 获取支付方式的中文描述
+const getPayMethodText = (payMethod) => {
+  const payMethodMap = {
+    'alipay': '支付宝',
+    'wechat': '微信支付',
+    'bank': '银行卡'
+  };
+  return payMethodMap[payMethod] || payMethod;
 };
 
 exports.updateOrderStatus = async (req, res) => {

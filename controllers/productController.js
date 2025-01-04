@@ -1,10 +1,13 @@
 const { Op } = require('sequelize');
-const Product = require('../models/Product');
-const Category = require('../models/Category');
-const Language = require('../models/Language');
-const ProductTranslation = require('../models/ProductTranslation');
-const CategoryTranslation = require('../models/CategoryTranslation');
 const sequelize = require('../config/database');
+const Product = require('../models/Product');
+const ProductTranslation = require('../models/ProductTranslation');
+const Category = require('../models/Category');
+const CategoryTranslation = require('../models/CategoryTranslation');
+const Language = require('../models/Language');
+const OrderProduct = require('../models/OrderProduct');
+const Inventory = require('../models/Inventory');
+const InventoryTransaction = require('../models/InventoryTransaction');
 
 exports.getProducts = async (req, res) => {
   try {
@@ -227,6 +230,8 @@ exports.updateProduct = async (req, res) => {
 };
 
 exports.deleteProduct = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  
   try {
     const { id } = req.params;
 
@@ -238,13 +243,48 @@ exports.deleteProduct = async (req, res) => {
       });
     }
 
-    await product.destroy();
+    // 检查是否存在订单关联
+    const hasOrders = await OrderProduct.count({
+      where: { ProductId: id }
+    });
+
+    if (hasOrders > 0) {
+      return res.status(400).json({
+        code: 400,
+        message: '该商品已有订单记录，无法删除'
+      });
+    }
+
+    // 删除商品相关的所有记录
+    // 1. 删除库存记录
+    await Inventory.destroy({
+      where: { productId: id },
+      transaction
+    });
+
+    // 2. 删除库存交易记录
+    await InventoryTransaction.destroy({
+      where: { productId: id },
+      transaction
+    });
+
+    // 3. 删除商品翻译
+    await ProductTranslation.destroy({
+      where: { productId: id },
+      transaction
+    });
+
+    // 4. 最后删除商品
+    await product.destroy({ transaction });
+
+    await transaction.commit();
 
     res.json({
       code: 200,
       message: '商品删除成功'
     });
   } catch (error) {
+    await transaction.rollback();
     console.error('Delete product error:', error);
     res.status(500).json({
       code: 500,

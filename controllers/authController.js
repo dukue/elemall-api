@@ -61,8 +61,8 @@ exports.updateUserStatus = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
-    // 验证状态值
-    if (typeof status !== 'boolean') {
+    // 验证状态值 - 修改验证逻辑
+    if (status !== true && status !== false) {
       return res.status(400).json({
         code: 400,
         message: '状态值必须是布尔类型'

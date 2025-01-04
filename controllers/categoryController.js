@@ -133,17 +133,35 @@ exports.createCategory = async (req, res) => {
       });
     }
 
+    // 检查每个语言版本的分类名称是否已存在
+    for (const [langCode, data] of Object.entries(translations)) {
+      const languageId = languageMap[langCode];
+      if (!languageId) continue;
+
+      const existingCategory = await CategoryTranslation.findOne({
+        where: {
+          name: data.name,
+          languageId: languageId
+        }
+      });
+
+      if (existingCategory) {
+        return res.status(400).json({
+          code: 400,
+          message: `${langCode}语言的分类名称"${data.name}"已存在`
+        });
+      }
+    }
+
     // 创建分类
     const category = await Category.create({}, { transaction });
 
     // 创建分类翻译
-    const translationPromises = Object.entries(translations).map(([langCode, data]) => {
+    for (const [langCode, data] of Object.entries(translations)) {
       const languageId = languageMap[langCode];
-      if (!languageId) {
-        throw new Error(`不支持的语言代码: ${langCode}`);
-      }
+      if (!languageId) continue;
 
-      return CategoryTranslation.create({
+      await CategoryTranslation.create({
         categoryId: category.id,
         languageId: languageId,
         name: data.name.trim(),
@@ -152,13 +170,12 @@ exports.createCategory = async (req, res) => {
         seoDescription: data.seoDescription?.trim(),
         seoKeywords: data.seoKeywords?.trim()
       }, { transaction });
-    });
+    }
 
-    await Promise.all(translationPromises);
     await transaction.commit();
 
     // 获取创建后的完整数据
-    const createdCategory = await Category.findByPk(category.id, {
+    const newCategory = await Category.findByPk(category.id, {
       include: [{
         model: CategoryTranslation,
         include: [Language]
@@ -168,14 +185,14 @@ exports.createCategory = async (req, res) => {
     res.status(201).json({
       code: 200,
       message: '分类创建成功',
-      data: createdCategory
+      data: newCategory
     });
   } catch (error) {
     await transaction.rollback();
     console.error('Create category error:', error);
     res.status(500).json({
       code: 500,
-      message: error.message || '服务器错误'
+      message: '服务器错误'
     });
   }
 };
@@ -195,24 +212,47 @@ exports.updateCategory = async (req, res) => {
       });
     }
 
-    // 更新分类翻译
+    // 获取所有支持的语言
+    const languages = await Language.findAll();
+    const languageMap = languages.reduce((map, lang) => {
+      map[lang.code] = lang.id;
+      return map;
+    }, {});
+
+    // 检查每个语言版本的分类名称是否已存在（排除当前分类）
     for (const [langCode, data] of Object.entries(translations)) {
-      const language = await Language.findOne({
-        where: { code: langCode }
+      const languageId = languageMap[langCode];
+      if (!languageId) continue;
+
+      const existingCategory = await CategoryTranslation.findOne({
+        where: {
+          name: data.name,
+          languageId: languageId,
+          categoryId: { [Op.ne]: id } // 排除当前分类
+        }
       });
 
-      if (!language) {
-        continue;
+      if (existingCategory) {
+        return res.status(400).json({
+          code: 400,
+          message: `${langCode}语言的分类名称"${data.name}"已存在`
+        });
       }
+    }
+
+    // 更新分类翻译
+    for (const [langCode, data] of Object.entries(translations)) {
+      const languageId = languageMap[langCode];
+      if (!languageId) continue;
 
       await CategoryTranslation.upsert({
         categoryId: category.id,
-        languageId: language.id,
-        name: data.name,
-        description: data.description,
-        seoTitle: data.seoTitle,
-        seoDescription: data.seoDescription,
-        seoKeywords: data.seoKeywords
+        languageId: languageId,
+        name: data.name.trim(),
+        description: data.description?.trim(),
+        seoTitle: data.seoTitle?.trim(),
+        seoDescription: data.seoDescription?.trim(),
+        seoKeywords: data.seoKeywords?.trim()
       }, { transaction });
     }
 
