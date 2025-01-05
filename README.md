@@ -1,8 +1,8 @@
 # Elemall_API
 
 这是一个基于 Node.js + Express 开发的电商后台管理系统 API，提供了完整的商品管理、订单管理、库存管理、多语言支持等功能。
-
-## 功能特性
+[前端项目在这里](https://github.com/dukue/ele-mall)
+## 功能模块
 
 - 用户认证与授权
 - 商品管理
