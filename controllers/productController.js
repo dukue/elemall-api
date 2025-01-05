@@ -8,6 +8,7 @@ const Language = require('../models/Language');
 const OrderProduct = require('../models/OrderProduct');
 const Inventory = require('../models/Inventory');
 const InventoryTransaction = require('../models/InventoryTransaction');
+const Warehouse = require('../models/Warehouse');
 
 exports.getProducts = async (req, res) => {
   try {
@@ -341,7 +342,8 @@ exports.createProductWithTranslations = async (req, res) => {
       weight, 
       status,
       categoryId,
-      translations 
+      translations,
+      initialInventory
     } = req.body;
 
     // 创建商品基本信息
@@ -365,40 +367,78 @@ exports.createProductWithTranslations = async (req, res) => {
       return map;
     }, {});
 
-    // 创建商品翻译
-    const translationPromises = Object.entries(translations).map(([langCode, data]) => {
+    // 创建商品翻译 - 使用 for...of 替代 Promise.all
+    for (const [langCode, data] of Object.entries(translations)) {
       const languageId = languageMap[langCode];
       if (!languageId) {
         throw new Error(`不支持的语言代码: ${langCode}`);
       }
 
-      return ProductTranslation.create({
+      await ProductTranslation.create({
         productId: product.id,
         languageId: languageId,
         name: data.name,
         description: data.description,
         specifications: data.specifications
       }, { transaction });
-    });
+    }
 
-    await Promise.all(translationPromises);
+    // 如果提供了初始库存信息，创建库存记录
+    if (initialInventory && Array.isArray(initialInventory)) {
+      for (const item of initialInventory) {
+        const { warehouseId, quantity, safetyStock = 10 } = item;
+        
+        // 检查仓库是否存在
+        const warehouse = await Warehouse.findByPk(warehouseId);
+        if (!warehouse) {
+          throw new Error(`仓库ID ${warehouseId} 不存在`);
+        }
+
+        // 创建库存记录
+        await Inventory.create({
+          productId: product.id,
+          warehouseId,
+          quantity,
+          safetyStock
+        }, { transaction });
+
+        // 创建入库流水记录
+        await InventoryTransaction.create({
+          productId: product.id,
+          toWarehouseId: warehouseId,
+          quantity,
+          type: 'in',
+          reason: '初始库存',
+          operatorId: req.user.id
+        }, { transaction });
+      }
+    }
+
     await transaction.commit();
 
-    // 获取完整的商品信息（包含翻译）
-    const productWithTranslations = await Product.findByPk(product.id, {
-      include: [{
-        model: ProductTranslation,
-        include: [Language]
-      }]
+    // 获取完整的商品信息（包含翻译和库存）
+    const productWithDetails = await Product.findByPk(product.id, {
+      include: [
+        {
+          model: ProductTranslation,
+          include: [Language]
+        },
+        {
+          model: Inventory,
+          include: [Warehouse]
+        }
+      ]
     });
 
     res.status(201).json({
       code: 200,
       message: '商品创建成功',
-      data: productWithTranslations
+      data: productWithDetails
     });
   } catch (error) {
-    await transaction.rollback();
+    if (transaction && !transaction.finished) {
+      await transaction.rollback();
+    }
     console.error('Create product error:', error);
     res.status(500).json({
       code: 500,

@@ -246,4 +246,84 @@ exports.transferInventory = async (req, res) => {
       message: '服务器错误'
     });
   }
+};
+
+exports.setProductInventory = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  
+  try {
+    const { id } = req.params;
+    const { inventory } = req.body;
+
+    // 检查商品是否存在
+    const product = await Product.findByPk(id);
+    if (!product) {
+      return res.status(404).json({
+        code: 404,
+        message: '商品不存在'
+      });
+    }
+
+    // 批量创建或更新库存记录
+    for (const item of inventory) {
+      const { warehouseId, quantity, safetyStock = 10 } = item;
+
+      // 检查仓库是否存在
+      const warehouse = await Warehouse.findByPk(warehouseId);
+      if (!warehouse) {
+        throw new Error(`仓库ID ${warehouseId} 不存在`);
+      }
+
+      // 查找或创建库存记录
+      const [inventoryRecord, created] = await Inventory.findOrCreate({
+        where: { productId: id, warehouseId },
+        defaults: { quantity: 0, safetyStock },
+        transaction
+      });
+
+      // 如果是新记录或数量有变化，创建库存变动记录
+      if (created || inventoryRecord.quantity !== quantity) {
+        const changeQuantity = quantity - (created ? 0 : inventoryRecord.quantity);
+        
+        if (changeQuantity !== 0) {
+          await InventoryTransaction.create({
+            productId: id,
+            toWarehouseId: changeQuantity > 0 ? warehouseId : null,
+            fromWarehouseId: changeQuantity < 0 ? warehouseId : null,
+            quantity: Math.abs(changeQuantity),
+            type: changeQuantity > 0 ? 'in' : 'out',
+            reason: created ? '初始库存' : '库存调整',
+            operatorId: req.user.id
+          }, { transaction });
+        }
+      }
+
+      // 更新库存记录
+      await inventoryRecord.update({
+        quantity,
+        safetyStock
+      }, { transaction });
+    }
+
+    await transaction.commit();
+
+    // 获取更新后的库存信息
+    const updatedInventory = await Inventory.findAll({
+      where: { productId: id },
+      include: [Warehouse]
+    });
+
+    res.json({
+      code: 200,
+      message: '商品库存设置成功',
+      data: updatedInventory
+    });
+  } catch (error) {
+    await transaction.rollback();
+    console.error('Set product inventory error:', error);
+    res.status(500).json({
+      code: 500,
+      message: error.message || '服务器错误'
+    });
+  }
 }; 

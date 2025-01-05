@@ -491,6 +491,44 @@ const validateCategory = (req, res, next) => {
   next();
 };
 
+const validateInventorySetup = (req, res, next) => {
+  const { inventory } = req.body;
+
+  if (!Array.isArray(inventory)) {
+    return res.status(400).json({
+      code: 400,
+      message: '库存数据格式不正确'
+    });
+  }
+
+  for (const item of inventory) {
+    const { warehouseId, quantity, safetyStock } = item;
+
+    if (!warehouseId || !Number.isInteger(warehouseId) || warehouseId <= 0) {
+      return res.status(400).json({
+        code: 400,
+        message: '无效的仓库ID'
+      });
+    }
+
+    if (!Number.isInteger(quantity) || quantity < 0) {
+      return res.status(400).json({
+        code: 400,
+        message: '库存数量必须是非负整数'
+      });
+    }
+
+    if (safetyStock !== undefined && (!Number.isInteger(safetyStock) || safetyStock < 0)) {
+      return res.status(400).json({
+        code: 400,
+        message: '安全库存必须是非负整数'
+      });
+    }
+  }
+
+  next();
+};
+
 module.exports = {
   validateUserCreate,
   validateUserUpdate,
@@ -504,5 +542,6 @@ module.exports = {
   validateCustomsStatus,
   validateTracking,
   validateTrackingUpdate,
-  validateCategory
+  validateCategory,
+  validateInventorySetup
 }; 

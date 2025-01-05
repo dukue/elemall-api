@@ -6,10 +6,11 @@ const {
   updateWarehouse,
   deleteWarehouse,
   getProductInventory,
-  transferInventory
+  transferInventory,
+  setProductInventory
 } = require('../controllers/warehouseController');
 const { authMiddleware } = require('../middleware/authMiddleware');
-const { validateWarehouse, validateInventoryTransfer } = require('../middleware/validator');
+const { validateWarehouse, validateInventoryTransfer, validateInventorySetup } = require('../middleware/validator');
 
 // 仓库管理
 router.get('/warehouses', authMiddleware, getWarehouses);
@@ -20,5 +21,6 @@ router.delete('/warehouses/:id', authMiddleware, deleteWarehouse);
 // 库存管理
 router.get('/products/:id/inventory', authMiddleware, getProductInventory);
 router.put('/products/:id/inventory/transfer', [authMiddleware, validateInventoryTransfer], transferInventory);
+router.post('/products/:id/inventory', [authMiddleware, validateInventorySetup], setProductInventory);
 
 module.exports = router; 
