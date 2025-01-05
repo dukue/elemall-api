@@ -3,6 +3,8 @@ const Warehouse = require('../models/Warehouse');
 const Inventory = require('../models/Inventory');
 const InventoryTransaction = require('../models/InventoryTransaction');
 const Product = require('../models/Product');
+const ProductTranslation = require('../models/ProductTranslation');
+const Language = require('../models/Language');
 const sequelize = require('../config/database');
 
 exports.getWarehouses = async (req, res) => {
@@ -321,6 +323,116 @@ exports.setProductInventory = async (req, res) => {
   } catch (error) {
     await transaction.rollback();
     console.error('Set product inventory error:', error);
+    res.status(500).json({
+      code: 500,
+      message: error.message || '服务器错误'
+    });
+  }
+};
+
+exports.getInventoryTransactions = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { 
+      startDate, 
+      endDate, 
+      type,
+      page = 1,
+      pageSize = 20
+    } = req.query;
+
+    // 构建查询条件
+    const where = { productId: id };
+    
+    // 添加时间范围过滤
+    if (startDate || endDate) {
+      where.createTime = {};
+      if (startDate) {
+        where.createTime[Op.gte] = new Date(startDate);
+      }
+      if (endDate) {
+        where.createTime[Op.lte] = new Date(endDate);
+      }
+    }
+
+    // 添加类型过滤
+    if (type) {
+      where.type = type;
+    }
+
+    // 计算分页
+    const offset = (page - 1) * pageSize;
+
+    // 首先获取默认语言
+    const defaultLanguage = await Language.findOne({
+      where: { isDefault: true }
+    });
+
+    const languageId = defaultLanguage ? defaultLanguage.id : 1;
+
+    // 查询库存变动记录
+    const { count, rows } = await InventoryTransaction.findAndCountAll({
+      where,
+      include: [
+        {
+          model: Product,
+          attributes: ['id'],
+          include: [{
+            model: ProductTranslation,
+            where: { languageId },
+            attributes: ['name']
+          }]
+        },
+        {
+          model: Warehouse,
+          as: 'fromWarehouse',
+          attributes: ['id', 'code', 'name']
+        },
+        {
+          model: Warehouse,
+          as: 'toWarehouse',
+          attributes: ['id', 'code', 'name']
+        }
+      ],
+      order: [['createTime', 'DESC']],
+      offset,
+      limit: Number(pageSize)
+    });
+
+    // 格式化响应数据
+    const transactions = rows.map(transaction => ({
+      id: transaction.id,
+      productId: transaction.productId,
+      productName: transaction.Product?.ProductTranslations[0]?.name,
+      fromWarehouse: transaction.fromWarehouse ? {
+        id: transaction.fromWarehouse.id,
+        code: transaction.fromWarehouse.code,
+        name: transaction.fromWarehouse.name
+      } : null,
+      toWarehouse: transaction.toWarehouse ? {
+        id: transaction.toWarehouse.id,
+        code: transaction.toWarehouse.code,
+        name: transaction.toWarehouse.name
+      } : null,
+      quantity: transaction.quantity,
+      type: transaction.type,
+      reason: transaction.reason,
+      operatorId: transaction.operatorId,
+      createTime: transaction.createTime
+    }));
+
+    res.json({
+      code: 200,
+      message: '获取库存变动记录成功',
+      data: {
+        total: count,
+        page: Number(page),
+        pageSize: Number(pageSize),
+        transactions
+      }
+    });
+  } catch (error) {
+    console.error('Get inventory transactions error:', error);
     res.status(500).json({
       code: 500,
       message: error.message || '服务器错误'

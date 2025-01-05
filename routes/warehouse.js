@@ -7,7 +7,8 @@ const {
   deleteWarehouse,
   getProductInventory,
   transferInventory,
-  setProductInventory
+  setProductInventory,
+  getInventoryTransactions
 } = require('../controllers/warehouseController');
 const { authMiddleware } = require('../middleware/authMiddleware');
 const { validateWarehouse, validateInventoryTransfer, validateInventorySetup } = require('../middleware/validator');
@@ -22,5 +23,6 @@ router.delete('/warehouses/:id', authMiddleware, deleteWarehouse);
 router.get('/products/:id/inventory', authMiddleware, getProductInventory);
 router.put('/products/:id/inventory/transfer', [authMiddleware, validateInventoryTransfer], transferInventory);
 router.post('/products/:id/inventory', [authMiddleware, validateInventorySetup], setProductInventory);
+router.get('/products/:id/inventory/transactions', authMiddleware, getInventoryTransactions);
 
 module.exports = router; 
