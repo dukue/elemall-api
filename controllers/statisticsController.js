@@ -8,6 +8,7 @@ const Order = require('../models/Order');
 const User = require('../models/User');
 const ShipmentTracking = require('../models/ShipmentTracking');
 const ExchangeRate = require('../models/ExchangeRate');
+const Inventory = require('../models/Inventory');
 
 exports.getOverview = async (req, res) => {
   try {
@@ -203,49 +204,53 @@ exports.getCategoryStats = async (req, res) => {
       });
     }
 
-    const stats = await Product.findAll({
+    const stats = await Category.findAll({
       attributes: [
-        [sequelize.col('Category.CategoryTranslations.name'), 'name'],
-        [sequelize.fn('COUNT', sequelize.col('Product.id')), 'value']
+        'id',
+        [sequelize.col('CategoryTranslations.name'), 'name'],
+        [sequelize.fn('COUNT', sequelize.col('Products.id')), 'value']
       ],
-      include: [{
-        model: Category,
-        attributes: [],
-        include: [{
+      include: [
+        {
           model: CategoryTranslation,
           attributes: [],
           where: { languageId: language.id },
           required: true
-        }]
-      }],
-      where: {
-        status: true
-      },
-      group: [
-        'Category.id', 
-        'Category.CategoryTranslations.name'
+        },
+        {
+          model: Product,
+          attributes: [],
+          required: false,
+          where: {
+            status: true
+          }
+        }
       ],
-      order: [[sequelize.fn('COUNT', sequelize.col('Product.id')), 'DESC']]
+      group: ['Category.id', 'CategoryTranslations.name'],
+      order: [[sequelize.fn('COUNT', sequelize.col('Products.id')), 'DESC']]
     });
 
     // 格式化数据
     const categories = stats.map(stat => ({
-      name: stat.getDataValue('name'),
-      value: Number(stat.getDataValue('value'))
+      id: stat.id,
+      name: stat.get('name'),
+      value: Number(stat.get('value'))
     }));
 
-    // 添加"其他"类别
-    const otherProducts = await Product.count({
+    // 获取未分类商品数量
+    const uncategorizedCount = await Product.count({
       where: {
         categoryId: null,
         status: true
       }
     });
 
-    if (otherProducts > 0) {
+    // 如果有未分类商品，添加"其他"类别
+    if (uncategorizedCount > 0) {
       categories.push({
-        name: '其他',
-        value: otherProducts
+        id: null,
+        name: '未分类',
+        value: uncategorizedCount
       });
     }
 
@@ -697,6 +702,66 @@ exports.getCarrierPerformance = async (req, res) => {
     res.status(500).json({
       code: 500,
       message: '服务器错误'
+    });
+  }
+};
+
+exports.getCategoryStatistics = async (req, res) => {
+  try {
+    const statistics = await Category.findAll({
+      attributes: [
+        'id',
+        [sequelize.fn('COUNT', sequelize.col('Products.id')), 'productCount'],
+        [sequelize.fn('SUM', sequelize.col('Products.price')), 'totalValue'],
+        [sequelize.fn('AVG', sequelize.col('Products.price')), 'averagePrice'],
+        [sequelize.fn('SUM', sequelize.col('Products->Inventories.quantity')), 'totalStock']
+      ],
+      include: [
+        {
+          model: Product,
+          attributes: [],
+          required: false,
+          include: [{
+            model: Inventory,
+            attributes: [],
+            required: false
+          }]
+        },
+        {
+          model: CategoryTranslation,
+          where: { languageId: 1 },
+          attributes: ['name'],
+          required: true
+        }
+      ],
+      group: [
+        'Category.id',
+        'CategoryTranslations.id',
+        'CategoryTranslations.name'
+      ],
+      order: [[sequelize.fn('COUNT', sequelize.col('Products.id')), 'DESC']]
+    });
+
+    // 格式化响应数据
+    const formattedStats = statistics.map(category => ({
+      id: category.id,
+      name: category.CategoryTranslations[0].name,
+      productCount: parseInt(category.dataValues.productCount) || 0,
+      totalValue: parseFloat(category.dataValues.totalValue) || 0,
+      averagePrice: parseFloat(category.dataValues.averagePrice) || 0,
+      totalStock: parseInt(category.dataValues.totalStock) || 0
+    }));
+
+    res.json({
+      code: 200,
+      message: '获取分类统计数据成功',
+      data: formattedStats
+    });
+  } catch (error) {
+    console.error('Get category statistics error:', error);
+    res.status(500).json({
+      code: 500,
+      message: error.message || '服务器错误'
     });
   }
 };
