@@ -71,6 +71,8 @@ exports.getProducts = async (req, res) => {
       price: product.price,
       weight: product.weight,
       status: product.status,
+      image: product.image,
+      images: product.images,
       category: product.Category ? {
         id: product.Category.id,
         name: product.Category.CategoryTranslations[0]?.name
@@ -99,30 +101,139 @@ exports.getProducts = async (req, res) => {
 };
 
 exports.createProduct = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  
   try {
-    const { name, price, weight, description } = req.body;
+    const { 
+      price, 
+      weight, 
+      status = true,
+      categoryId,
+      translations,
+      initialInventory
+    } = req.body;
 
+    // 检查分类是否存在
+    if (categoryId) {
+      const category = await Category.findByPk(categoryId);
+      if (!category) {
+        return res.status(400).json({
+          code: 400,
+          message: '指定的分类不存在'
+        });
+      }
+    }
+
+    // 获取所有支持的语言
+    const languages = await Language.findAll();
+    const languageMap = languages.reduce((map, lang) => {
+      map[lang.code] = lang.id;
+      return map;
+    }, {});
+
+    // 检查默认语言是否提供
+    const defaultLanguage = languages.find(lang => lang.isDefault);
+    if (!defaultLanguage || !translations[defaultLanguage.code]) {
+      return res.status(400).json({
+        code: 400,
+        message: `默认语言 ${defaultLanguage?.code || 'zh'} 的翻译信息不能为空`
+      });
+    }
+
+    // 创建商品基本信息
     const product = await Product.create({
-      name,
       price,
       weight,
-      description
+      status,
+      categoryId
+    }, { transaction });
+
+    // 创建商品翻译
+    for (const [langCode, data] of Object.entries(translations)) {
+      const languageId = languageMap[langCode];
+      if (!languageId) {
+        throw new Error(`不支持的语言代码: ${langCode}`);
+      }
+
+      // 检查这个语言的数据是否有效（非空）
+      const isEmptyTranslation = !data.name?.trim() && !data.description?.trim() && 
+        (!data.specifications || Object.keys(data.specifications).length === 0);
+
+      // 如果是空的翻译，跳过创建
+      if (isEmptyTranslation) {
+        continue;
+      }
+
+      await ProductTranslation.create({
+        productId: product.id,
+        languageId: languageId,
+        name: data.name.trim(),
+        description: data.description?.trim() || '',
+        specifications: data.specifications || {}
+      }, { transaction });
+    }
+
+    // 如果提供了初始库存信息，创建库存记录
+    if (initialInventory && Array.isArray(initialInventory)) {
+      for (const item of initialInventory) {
+        const { warehouseId, quantity, safetyStock } = item;
+        
+        // 检查仓库是否存在
+        const warehouse = await Warehouse.findByPk(warehouseId);
+        if (!warehouse) {
+          throw new Error(`仓库ID ${warehouseId} 不存在`);
+        }
+
+        // 创建库存记录
+        await Inventory.create({
+          productId: product.id,
+          warehouseId,
+          quantity,
+          safetyStock
+        }, { transaction });
+
+        // 创建入库流水记录
+        await InventoryTransaction.create({
+          productId: product.id,
+          toWarehouseId: warehouseId,
+          quantity,
+          type: 'in',
+          reason: '初始库存',
+          operatorId: req.user.id
+        }, { transaction });
+      }
+    }
+
+    await transaction.commit();
+
+    // 获取创建的商品完整信息
+    const createdProduct = await Product.findByPk(product.id, {
+      include: [
+        {
+          model: ProductTranslation,
+          include: [Language]
+        },
+        {
+          model: Category,
+          include: [{
+            model: CategoryTranslation,
+            include: [Language]
+          }]
+        },
+        {
+          model: Inventory,
+          include: [Warehouse]
+        }
+      ]
     });
 
     res.status(201).json({
       code: 200,
       message: '商品创建成功',
-      data: {
-        id: product.id,
-        name: product.name,
-        price: product.price,
-        weight: product.weight,
-        status: product.status,
-        description: product.description,
-        createTime: product.createTime
-      }
+      data: createdProduct
     });
   } catch (error) {
+    await transaction.rollback();
     console.error('Create product error:', error);
     if (error.name === 'SequelizeValidationError') {
       return res.status(400).json({
@@ -132,7 +243,7 @@ exports.createProduct = async (req, res) => {
     }
     res.status(500).json({
       code: 500,
-      message: '服务器错误'
+      message: error.message || '服务器错误'
     });
   }
 };
@@ -769,6 +880,8 @@ exports.getProductDetail = async (req, res) => {
       price: product.price,
       weight: product.weight,
       status: product.status,
+      image: product.image,
+      images: product.images,
       category: product.Category ? {
         id: product.Category.id,
         translations: categoryTranslations
@@ -788,6 +901,107 @@ exports.getProductDetail = async (req, res) => {
     res.status(500).json({
       code: 500,
       message: error.message || '服务器错误'
+    });
+  }
+};
+
+exports.uploadProductImage = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  
+  try {
+    const { id } = req.params;
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({
+        code: 400,
+        message: '请上传图片文件'
+      });
+    }
+
+    // 检查商品是否存在
+    const product = await Product.findByPk(id);
+    if (!product) {
+      return res.status(404).json({
+        code: 404,
+        message: '商品不存在'
+      });
+    }
+
+    // 更新商品主图
+    await product.update({
+      image: file.path.replace(/\\/g, '/')  // 统一使用正斜杠
+    }, { transaction });
+
+    await transaction.commit();
+
+    res.json({
+      code: 200,
+      message: '商品主图上传成功',
+      data: {
+        image: file.path.replace(/\\/g, '/')
+      }
+    });
+  } catch (error) {
+    await transaction.rollback();
+    console.error('Upload product image error:', error);
+    res.status(500).json({
+      code: 500,
+      message: '服务器错误'
+    });
+  }
+};
+
+exports.uploadProductImages = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  
+  try {
+    const { id } = req.params;
+    const files = req.files;
+
+    if (!files || files.length === 0) {
+      return res.status(400).json({
+        code: 400,
+        message: '请上传图片文件'
+      });
+    }
+
+    // 检查商品是否存在
+    const product = await Product.findByPk(id);
+    if (!product) {
+      return res.status(404).json({
+        code: 404,
+        message: '商品不存在'
+      });
+    }
+
+    // 获取现有的图片集合
+    const existingImages = product.images || [];
+
+    // 添加新上传的图片
+    const newImages = files.map(file => file.path.replace(/\\/g, '/'));
+    const updatedImages = [...existingImages, ...newImages];
+
+    // 更新商品图片集
+    await product.update({
+      images: updatedImages
+    }, { transaction });
+
+    await transaction.commit();
+
+    res.json({
+      code: 200,
+      message: '商品图片上传成功',
+      data: {
+        images: updatedImages
+      }
+    });
+  } catch (error) {
+    await transaction.rollback();
+    console.error('Upload product images error:', error);
+    res.status(500).json({
+      code: 500,
+      message: '服务器错误'
     });
   }
 }; 

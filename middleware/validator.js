@@ -75,7 +75,7 @@ const validateUserUpdate = (req, res, next) => {
 };
 
 const validateProduct = (req, res, next) => {
-  const { price, weight, status, categoryId, translations } = req.body;
+  const { price, weight, status, categoryId, translations, initialInventory } = req.body;
 
   // 验证基本信息
   if (typeof price !== 'number' || price < 0 || price > 999999.99) {
@@ -92,16 +92,50 @@ const validateProduct = (req, res, next) => {
     });
   }
 
-  // 验证多语言信息
-  if (!translations || typeof translations !== 'object') {
+  if (status !== undefined && typeof status !== 'boolean') {
     return res.status(400).json({
       code: 400,
-      message: '商品翻译信息不能为空'
+      message: '商品状态必须是布尔值'
     });
   }
 
+  if (categoryId !== undefined && (!Number.isInteger(categoryId) || categoryId <= 0)) {
+    return res.status(400).json({
+      code: 400,
+      message: '分类ID必须是正整数'
+    });
+  }
+
+  // 验证多语言信息
+  if (!translations || typeof translations !== 'object' || Object.keys(translations).length === 0) {
+    return res.status(400).json({
+      code: 400,
+      message: '至少需要提供一种语言的商品信息'
+    });
+  }
+
+  // 检查是否至少有一种语言的数据是有效的
+  let hasValidTranslation = false;
+
   // 验证每种语言的商品信息
   for (const [lang, data] of Object.entries(translations)) {
+    // 验证语言代码
+    if (!/^[a-z]{2,3}$/.test(lang)) {
+      return res.status(400).json({
+        code: 400,
+        message: '语言代码必须是2-3个小写字母'
+      });
+    }
+
+    // 检查这个语言的数据是否有效（非空）
+    const isEmptyTranslation = !data.name?.trim() && !data.description?.trim() && 
+      (!data.specifications || Object.keys(data.specifications).length === 0);
+
+    // 如果是空的翻译，跳过验证
+    if (isEmptyTranslation) {
+      continue;
+    }
+
     // 验证名称
     if (!data.name || data.name.trim().length < 2 || data.name.trim().length > 100) {
       return res.status(400).json({
@@ -124,6 +158,50 @@ const validateProduct = (req, res, next) => {
         code: 400,
         message: `${lang}语言的规格信息格式不正确`
       });
+    }
+
+    // 标记找到了有效的翻译
+    hasValidTranslation = true;
+  }
+
+  // 检查是否至少有一种语言的数据是有效的
+  if (!hasValidTranslation) {
+    return res.status(400).json({
+      code: 400,
+      message: '至少需要提供一种语言的完整商品信息'
+    });
+  }
+
+  // 验证初始库存信息（如果提供）
+  if (initialInventory !== undefined) {
+    if (!Array.isArray(initialInventory)) {
+      return res.status(400).json({
+        code: 400,
+        message: '初始库存信息必须是数组'
+      });
+    }
+
+    for (const item of initialInventory) {
+      if (!item.warehouseId || !Number.isInteger(item.warehouseId) || item.warehouseId <= 0) {
+        return res.status(400).json({
+          code: 400,
+          message: '仓库ID必须是正整数'
+        });
+      }
+
+      if (!Number.isInteger(item.quantity) || item.quantity < 0) {
+        return res.status(400).json({
+          code: 400,
+          message: '库存数量必须是非负整数'
+        });
+      }
+
+      if (item.safetyStock !== undefined && (!Number.isInteger(item.safetyStock) || item.safetyStock < 0)) {
+        return res.status(400).json({
+          code: 400,
+          message: '安全库存必须是非负整数'
+        });
+      }
     }
   }
 

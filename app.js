@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const authRoutes = require('./routes/auth');
 const productRoutes = require('./routes/product');
 const orderRoutes = require('./routes/order');
@@ -11,6 +12,8 @@ const warehouseRoutes = require('./routes/warehouse');
 const customsRoutes = require('./routes/customs');
 const trackingRoutes = require('./routes/tracking');
 const categoryRoutes = require('./routes/category');
+const uploadRoutes = require('./routes/upload');
+const inventoryRoutes = require('./routes/inventory');
 require('./models/associations');
 
 // 在使用任何模型之前确保关联关系已经建立
@@ -23,23 +26,25 @@ require('dotenv').config();
 app.use(cors());
 app.use(express.json());
 
-// 路由
+// 添加静态文件服务
+app.use('/api/v1/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// API路由
 app.use('/api/v1/auth', authRoutes);
-app.use('/api/v1', productRoutes);
-app.use('/api/v1', orderRoutes);
-app.use('/api/v1', statisticsRoutes);
+app.use('/api/v1/products', productRoutes);
+app.use('/api/v1/orders', orderRoutes);
+app.use('/api/v1/statistics', statisticsRoutes);
 app.use('/api/v1/i18n', i18nRoutes);
 app.use('/api/v1/exchange', exchangeRoutes);
-app.use('/api/v1', warehouseRoutes);
-app.use('/api/v1', customsRoutes);
+app.use('/api/v1/warehouses', warehouseRoutes);
+app.use('/api/v1/inventory', inventoryRoutes);
+app.use('/api/v1/customs', customsRoutes);
 app.use('/api/v1', trackingRoutes);
-app.use('/api/v1', categoryRoutes);
+app.use('/api/v1/categories', categoryRoutes);
+app.use('/api/v1', uploadRoutes);
 
 // 错误处理
 app.use(errorHandler);
-
-// 添加静态文件服务
-app.use('/uploads', express.static('uploads'));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

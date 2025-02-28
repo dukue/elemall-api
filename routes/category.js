@@ -9,9 +9,9 @@ const {
 const { authMiddleware } = require('../middleware/authMiddleware');
 const { validateCategory } = require('../middleware/validator');
 
-router.get('/categories', authMiddleware, getCategories);
-router.post('/categories', [authMiddleware, validateCategory], createCategory);
-router.put('/categories/:id', [authMiddleware, validateCategory], updateCategory);
-router.delete('/categories/:id', authMiddleware, deleteCategory);
+router.get('/', authMiddleware, getCategories);
+router.post('/', [authMiddleware, validateCategory], createCategory);
+router.put('/:id', [authMiddleware, validateCategory], updateCategory);
+router.delete('/:id', authMiddleware, deleteCategory);
 
 module.exports = router; 

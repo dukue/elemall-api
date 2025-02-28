@@ -12,7 +12,7 @@ const ShipmentTracking = sequelize.define('ShipmentTracking', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: Order,
+      model: 'Orders',
       key: 'id'
     }
   },
@@ -72,5 +72,11 @@ const ShipmentTracking = sequelize.define('ShipmentTracking', {
 
 ShipmentTracking.belongsTo(Order, { foreignKey: 'orderId' });
 Order.hasOne(ShipmentTracking, { foreignKey: 'orderId' });
+
+ShipmentTracking.associate = (models) => {
+  ShipmentTracking.hasMany(models.TrackingHistory, {
+    foreignKey: 'trackingId'
+  });
+};
 
 module.exports = ShipmentTracking; 

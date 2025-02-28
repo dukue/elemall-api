@@ -33,6 +33,16 @@ const Product = sequelize.define('Product', {
       model: Category,
       key: 'id'
     }
+  },
+  image: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: '商品主图路径'
+  },
+  images: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment: '商品图片集合'
   }
 }, {
   createdAt: 'createTime',

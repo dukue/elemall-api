@@ -91,10 +91,33 @@ async function initDatabase() {
       price: (Math.random() * 1000).toFixed(2),
       weight: (Math.random() * 10).toFixed(2),
       status: true,
-      categoryId: categories[Math.floor(Math.random() * categories.length)].id
+      categoryId: categories[Math.floor(Math.random() * categories.length)].id,
+      image: `uploads/products/product-${i + 1}.jpg`,  // 添加默认主图
+      images: [  // 添加默认图片集
+        `uploads/products/product-${i + 1}-1.jpg`,
+        `uploads/products/product-${i + 1}-2.jpg`,
+        `uploads/products/product-${i + 1}-3.jpg`
+      ]
     }));
 
     const products = await Product.bulkCreate(testProducts);
+
+    // 创建商品图片目录
+    const fs = require('fs');
+    const path = require('path');
+    const uploadDir = path.join(__dirname, '..', 'uploads', 'products');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
+    // 创建测试图片文件
+    for (let i = 0; i < testProducts.length; i++) {
+      // 创建空的图片文件
+      fs.writeFileSync(path.join(__dirname, '..', testProducts[i].image), '');
+      for (const imagePath of testProducts[i].images) {
+        fs.writeFileSync(path.join(__dirname, '..', imagePath), '');
+      }
+    }
 
     // 为每个商品创建多语言数据
     for (const product of products) {
