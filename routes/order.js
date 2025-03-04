@@ -44,7 +44,7 @@ router.put('/:id/status', [authMiddleware, validateOrderStatus], updateOrderStat
 
 // 订单清关接口
 router.get('/:id/customs', authMiddleware, getCustomsStatus);
-router.put('/:id/customs', [authMiddleware, validateCustomsStatus], updateCustomsStatus);
+router.put('/:id/customs/status', [authMiddleware, validateCustomsStatus], updateCustomsStatus);
 router.get('/:id/customs/documents', authMiddleware, getCustomsDocuments);
 router.post('/:id/customs/documents', [authMiddleware, upload.single('file')], uploadCustomsDocument);
 router.get('/customs/documents/:id', authMiddleware, downloadCustomsDocument);

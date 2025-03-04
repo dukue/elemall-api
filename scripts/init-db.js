@@ -52,14 +52,30 @@ async function initDatabase() {
 
     // 创建商品分类
     console.log('Creating categories...');
-    const categories = await Category.bulkCreate([{}, {}, {}, {}]);
-    console.log('Categories created:', categories.map(c => c.id));
+    const categories = await Category.bulkCreate([
+      // 电子产品分类
+      { 
+        image: 'uploads/categories/electronics.jpg'
+      },
+      // 服装分类
+      { 
+        image: 'uploads/categories/clothing.jpg'
+      },
+      // 食品分类
+      { 
+        image: 'uploads/categories/food.jpg'
+      },
+      // 家居分类
+      { 
+        image: 'uploads/categories/home.jpg'
+      }
+    ]);
 
     // 为每个分类创建多语言数据
     const categoryNames = ['电子产品', '服装', '食品', '家居'];
     for (let i = 0; i < categories.length; i++) {
       console.log(`Creating translations for category ${categories[i].id}...`);
-      const translations = await CategoryTranslation.bulkCreate([
+      await CategoryTranslation.bulkCreate([
         {
           categoryId: categories[i].id,
           languageId: languages[0].id, // 中文
@@ -83,8 +99,25 @@ async function initDatabase() {
           description: `${categoryNames[i]}の説明`
         }
       ]);
-      console.log(`Created translations:`, translations.map(t => ({id: t.id, name: t.name})));
     }
+
+    // 创建子分类
+    const subCategories = await Category.bulkCreate([
+      // 电子产品的子分类
+      { 
+        image: 'uploads/categories/phones.jpg'
+      },
+      { 
+        image: 'uploads/categories/computers.jpg'
+      },
+      // 服装的子分类
+      { 
+        image: 'uploads/categories/mens.jpg'
+      },
+      { 
+        image: 'uploads/categories/womens.jpg'
+      }
+    ]);
 
     // 创建测试商品数据
     const testProducts = Array.from({ length: 20 }, (_, i) => ({

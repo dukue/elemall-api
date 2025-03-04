@@ -539,34 +539,79 @@ const validateTrackingUpdate = (req, res, next) => {
 
 const validateCategory = (req, res, next) => {
   const { translations } = req.body;
+  
+  console.log('Raw translations:', translations);
+  console.log('Type of translations:', typeof translations);
 
-  if (!translations || typeof translations !== 'object') {
+  // 修改这里的验证逻辑
+  try {
+    // 如果是字符串，尝试解析，并修复可能的不完整JSON
+    let translationsData = translations;
+    if (typeof translations === 'string') {
+      // 预处理JSON字符串
+      translationsData = translations
+        .trim() // 移除首尾空白
+        .replace(/\n/g, '') // 移除所有换行符
+        .replace(/\s+/g, ' ') // 将多个空白字符替换为单个空格
+        .replace(/"\s+}/g, '"}') // 修复键值对结束处的空格
+        .replace(/}\s+,/g, '},') // 修复对象之间的空格
+        .replace(/,\s+"/g, ',"') // 修复键值对开始处的空格
+        .replace(/^["']|["']$/g, ''); // 移除首尾可能存在的额外引号
+      
+      // 检查并修复不完整的JSON
+      if (translationsData.startsWith('"zh":') || translationsData.startsWith('"en":')) {
+        translationsData = '{' + translationsData + '}';
+      }
+      
+      console.log('Processed translations:', translationsData);
+      
+      try {
+        translationsData = JSON.parse(translationsData);
+        console.log('Parsed translations:', translationsData);
+      } catch (parseError) {
+        console.error('Parse error:', parseError);
+        throw parseError;
+      }
+    }
+
+    if (!translationsData || typeof translationsData !== 'object') {
+      return res.status(400).json({
+        code: 400,
+        message: '分类翻译信息不能为空'
+      });
+    }
+
+    // 检查每个语言的翻译
+    for (const [lang, data] of Object.entries(translationsData)) {
+      // 检查名称
+      if (!data.name || data.name.trim().length < 2 || data.name.trim().length > 50) {
+        return res.status(400).json({
+          code: 400,
+          message: `${lang}语言的分类名称长度应在2-50个字符之间`
+        });
+      }
+
+      // 检查描述（如果提供）
+      if (data.description && data.description.trim().length > 500) {
+        return res.status(400).json({
+          code: 400,
+          message: `${lang}语言的描述长度不能超过500个字符`
+        });
+      }
+    }
+
+    // 将解析后的数据保存回 req.body
+    req.body.translations = translationsData;
+    console.log('Final translations in req.body:', req.body.translations);
+    next();
+  } catch (error) {
+    console.error('Validate category error:', error);
+    console.error('Failed to parse translations:', translations);
     return res.status(400).json({
       code: 400,
-      message: '分类翻译信息不能为空'
+      message: '分类翻译信息格式不正确，请检查JSON格式是否完整且正确'
     });
   }
-
-  // 检查每个语言的翻译
-  for (const [lang, data] of Object.entries(translations)) {
-    // 检查名称
-    if (!data.name || data.name.trim().length < 2 || data.name.trim().length > 50) {
-      return res.status(400).json({
-        code: 400,
-        message: `${lang}语言的分类名称长度应在2-50个字符之间`
-      });
-    }
-
-    // 检查描述（如果提供）
-    if (data.description && data.description.trim().length > 500) {
-      return res.status(400).json({
-        code: 400,
-        message: `${lang}语言的描述长度不能超过500个字符`
-      });
-    }
-  }
-
-  next();
 };
 
 const validateInventorySetup = (req, res, next) => {

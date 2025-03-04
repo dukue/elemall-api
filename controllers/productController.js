@@ -563,16 +563,27 @@ exports.getProductWithTranslations = async (req, res) => {
     const { id } = req.params;
     const { lang } = req.query; // 可选的语言参数
 
+    // 首先检查语言是否存在
+    if (lang) {
+      const language = await Language.findOne({
+        where: { code: lang }
+      });
+
+      if (!language) {
+        return res.status(400).json({
+          code: 400,
+          message: '不支持的语言代码'
+        });
+      }
+    }
+
     const include = [{
       model: ProductTranslation,
-      include: [Language]
+      include: [{
+        model: Language,
+        where: lang ? { code: lang } : undefined
+      }]
     }];
-
-    if (lang) {
-      include[0].where = {
-        '$Language.code$': lang
-      };
-    }
 
     const product = await Product.findByPk(id, { include });
 
@@ -583,10 +594,35 @@ exports.getProductWithTranslations = async (req, res) => {
       });
     }
 
+    // 格式化响应数据
+    const translations = {};
+    product.ProductTranslations.forEach(translation => {
+      translations[translation.Language.code] = {
+        name: translation.name,
+        description: translation.description,
+        specifications: translation.specifications,
+        seoTitle: translation.seoTitle,
+        seoDescription: translation.seoDescription,
+        seoKeywords: translation.seoKeywords
+      };
+    });
+
+    const formattedProduct = {
+      id: product.id,
+      price: product.price,
+      weight: product.weight,
+      status: product.status,
+      image: product.image,
+      images: product.images,
+      translations,
+      createTime: product.createTime,
+      updateTime: product.updateTime
+    };
+
     res.json({
       code: 200,
       message: '获取商品信息成功',
-      data: product
+      data: formattedProduct
     });
   } catch (error) {
     console.error('Get product error:', error);

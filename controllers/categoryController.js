@@ -4,30 +4,49 @@ const CategoryTranslation = require('../models/CategoryTranslation');
 const Language = require('../models/Language');
 const Product = require('../models/Product');
 const sequelize = require('../config/database');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
+// 配置文件上传
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/categories')
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+    cb(null, 'category-' + uniqueSuffix + path.extname(file.originalname))
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 限制5MB
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('只允许上传图片文件'));
+    }
+  }
+});
 
 exports.getCategories = async (req, res) => {
   try {
     const { query = '', lang = 'zh' } = req.query;
-    console.log('Getting categories with params:', { query, lang });
-
-    // 先直接查询，看看数据库中有什么
-    const allLanguages = await Language.findAll();
-    console.log('All available languages:', allLanguages.map(l => l.toJSON()));
 
     // 获取指定语言
     let language = await Language.findOne({
-      where: {
-        code: lang
-      }
+      where: { code: lang }
     });
-    console.log('Found language:', language ? language.toJSON() : null);
 
     if (!language) {
-      // 如果找不到指定语言，尝试使用默认语言
+      // 如果找不到指定语言，使用默认语言
       language = await Language.findOne({
         where: { isDefault: true }
       });
-      console.log('Using default language:', language ? language.toJSON() : null);
       
       if (!language) {
         return res.status(400).json({
@@ -37,23 +56,18 @@ exports.getCategories = async (req, res) => {
       }
     }
 
-    // 构建查询条件
-    const includeClause = [{
-      model: CategoryTranslation,
-      where: {
-        languageId: language.id,
-        ...(query && {
-          name: { [Op.like]: `%${query}%` }
-        })
-      },
-      required: true
-    }];
-
-    console.log('Querying categories with include clause:', JSON.stringify(includeClause, null, 2));
-
     // 查询分类列表
     const categories = await Category.findAll({
-      include: includeClause,
+      include: [{
+        model: CategoryTranslation,
+        where: {
+          languageId: language.id,
+          ...(query && {
+            name: { [Op.like]: `%${query}%` }
+          })
+        },
+        required: true
+      }],
       attributes: {
         include: [
           [
@@ -69,32 +83,17 @@ exports.getCategories = async (req, res) => {
       order: [[{ model: CategoryTranslation }, 'name', 'ASC']]
     });
 
-    console.log('Found categories:', categories.length);
-    
-    if (categories.length === 0) {
-      // 检查是否有任何分类存在
-      const totalCategories = await Category.count();
-      console.log('Total categories in database:', totalCategories);
-      
-      // 检查是否有任何翻译存在
-      const totalTranslations = await CategoryTranslation.count({
-        where: { languageId: language.id }
-      });
-      console.log('Total translations for language:', totalTranslations);
-    }
-
     // 格式化响应数据
-    const formattedCategories = categories.map(category => {
-      const translation = category.CategoryTranslations[0];
-      return {
-        id: category.id,
-        name: translation.name,
-        description: translation.description,
-        productCount: Number(category.getDataValue('productCount')),
-        createTime: category.createTime,
-        updateTime: category.updateTime
-      };
-    });
+    const formattedCategories = categories.map(category => ({
+      id: category.id,
+      name: category.CategoryTranslations[0]?.name,
+      description: category.CategoryTranslations[0]?.description,
+      image: category.image,
+      seoTitle: category.CategoryTranslations[0]?.seoTitle,
+      seoDescription: category.CategoryTranslations[0]?.seoDescription,
+      seoKeywords: category.CategoryTranslations[0]?.seoKeywords,
+      productCount: Number(category.getDataValue('productCount'))
+    }));
 
     res.json({
       code: 200,
@@ -102,11 +101,64 @@ exports.getCategories = async (req, res) => {
       data: formattedCategories
     });
   } catch (error) {
-    console.error('Get categories error:', error);
-    console.error('Error stack:', error.stack);
     res.status(500).json({
       code: 500,
-      message: error.message || '服务器错误'
+      message: '服务器错误'
+    });
+  }
+};
+
+exports.getCategoryById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const category = await Category.findByPk(id, {
+      include: [{
+        model: CategoryTranslation,
+        include: [{
+          model: Language,
+          attributes: ['id', 'code', 'name']
+        }]
+      }]
+    });
+
+    if (!category) {
+      return res.status(404).json({
+        code: 404,
+        message: '分类不存在'
+      });
+    }
+
+    // 格式化翻译数据
+    const translations = {};
+    category.CategoryTranslations.forEach(translation => {
+      translations[translation.Language.code] = {
+        name: translation.name,
+        description: translation.description,
+        seoTitle: translation.seoTitle,
+        seoDescription: translation.seoDescription,
+        seoKeywords: translation.seoKeywords
+      };
+    });
+
+    // 格式化响应数据
+    const formattedCategory = {
+      id: category.id,
+      image: category.image,
+      translations,
+      createTime: category.createTime,
+      updateTime: category.updateTime
+    };
+
+    res.json({
+      code: 200,
+      message: '获取分类详情成功',
+      data: formattedCategory
+    });
+  } catch (error) {
+    res.status(500).json({
+      code: 500,
+      message: '服务器错误'
     });
   }
 };
@@ -115,7 +167,35 @@ exports.createCategory = async (req, res) => {
   const transaction = await sequelize.transaction();
   
   try {
-    const { translations } = req.body;
+    const rawTranslations = req.body.translations;
+    let translations;
+
+    if (typeof rawTranslations === 'string') {
+      try {
+        const cleanTranslations = rawTranslations
+          .trim()
+          .replace(/[\r\n\s]+/g, ' ')
+          .replace(/"\s+}/g, '"}')
+          .replace(/{\s+"/g, '{"');
+
+        translations = JSON.parse(cleanTranslations);
+      } catch (error) {
+        return res.status(400).json({
+          code: 400,
+          message: '分类翻译信息格式不正确: ' + error.message
+        });
+      }
+    } else if (typeof rawTranslations === 'object' && rawTranslations !== null) {
+      translations = rawTranslations;
+    } else {
+      return res.status(400).json({
+        code: 400,
+        message: '分类翻译信息不能为空'
+      });
+    }
+
+    const image = req.file ? 
+      '/uploads/categories/' + path.basename(req.file.path) : null;
 
     // 获取所有支持的语言
     const languages = await Language.findAll();
@@ -154,7 +234,9 @@ exports.createCategory = async (req, res) => {
     }
 
     // 创建分类
-    const category = await Category.create({}, { transaction });
+    const category = await Category.create({
+      image
+    }, { transaction });
 
     // 创建分类翻译
     for (const [langCode, data] of Object.entries(translations)) {
@@ -202,10 +284,12 @@ exports.updateCategory = async (req, res) => {
   
   try {
     const { id } = req.params;
-    const { translations } = req.body;
+    const { translations } = req.body;  // translations已经在验证中间件中被解析为对象
 
+    // 验证分类是否存在
     const category = await Category.findByPk(id);
     if (!category) {
+      await transaction.rollback();
       return res.status(404).json({
         code: 404,
         message: '分类不存在'
@@ -219,34 +303,36 @@ exports.updateCategory = async (req, res) => {
       return map;
     }, {});
 
-    // 检查每个语言版本的分类名称是否已存在（排除当前分类）
-    for (const [langCode, data] of Object.entries(translations)) {
-      const languageId = languageMap[langCode];
-      if (!languageId) continue;
-
-      const existingCategory = await CategoryTranslation.findOne({
-        where: {
-          name: data.name,
-          languageId: languageId,
-          categoryId: { [Op.ne]: id } // 排除当前分类
+    // 更新图片
+    if (req.file) {
+      // 如果有旧图片，删除它
+      if (category.image) {
+        const oldImagePath = path.join(__dirname, '..', category.image);
+        if (fs.existsSync(oldImagePath)) {
+          fs.unlinkSync(oldImagePath);
         }
-      });
-
-      if (existingCategory) {
-        return res.status(400).json({
-          code: 400,
-          message: `${langCode}语言的分类名称"${data.name}"已存在`
-        });
       }
+      category.image = '/uploads/categories/' + path.basename(req.file.path);
     }
 
-    // 更新分类翻译
+    // 更新分类信息
+    await category.update({
+      image: category.image
+    }, { transaction });
+
+    // 更新翻译信息
     for (const [langCode, data] of Object.entries(translations)) {
       const languageId = languageMap[langCode];
-      if (!languageId) continue;
+      if (!languageId) {
+        await transaction.rollback();
+        return res.status(400).json({
+          code: 400,
+          message: `不支持的语言代码: ${langCode}`
+        });
+      }
 
       await CategoryTranslation.upsert({
-        categoryId: category.id,
+        categoryId: id,
         languageId: languageId,
         name: data.name.trim(),
         description: data.description?.trim(),
@@ -262,21 +348,41 @@ exports.updateCategory = async (req, res) => {
     const updatedCategory = await Category.findByPk(id, {
       include: [{
         model: CategoryTranslation,
-        include: [Language]
+        include: [{
+          model: Language,
+          attributes: ['code']
+        }]
       }]
     });
 
-    res.json({
+    // 格式化响应数据
+    const formattedTranslations = {};
+    updatedCategory.CategoryTranslations.forEach(translation => {
+      formattedTranslations[translation.Language.code] = {
+        name: translation.name,
+        description: translation.description,
+        seoTitle: translation.seoTitle,
+        seoDescription: translation.seoDescription,
+        seoKeywords: translation.seoKeywords
+      };
+    });
+
+    return res.json({
       code: 200,
       message: '分类更新成功',
-      data: updatedCategory
+      data: {
+        id: updatedCategory.id,
+        image: updatedCategory.image,
+        translations: formattedTranslations
+      }
     });
+
   } catch (error) {
     await transaction.rollback();
     console.error('Update category error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       code: 500,
-      message: '服务器错误'
+      message: '更新分类失败: ' + error.message
     });
   }
 };
