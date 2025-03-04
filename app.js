@@ -14,6 +14,7 @@ const trackingRoutes = require('./routes/tracking');
 const categoryRoutes = require('./routes/category');
 const uploadRoutes = require('./routes/upload');
 const inventoryRoutes = require('./routes/inventory');
+const mallRoutes = require('./routes/mall');
 require('./models/associations');
 
 // 在使用任何模型之前确保关联关系已经建立
@@ -48,8 +49,7 @@ app.use('/api/v1', uploadRoutes);
 app.use('/api/v1', require('./routes/auth'));
 
 // 前台商城路由
-app.use('/api/v1/mall', require('./routes/mall/auth'));
-app.use('/api/v1/mall', require('./routes/mall/product'));
+app.use('/api/v1/mall', require('./routes/mall'));
 
 // 错误处理
 app.use(errorHandler);
@@ -64,4 +64,6 @@ if (process.env.NODE_ENV === 'development') {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
-}); 
+});
+
+module.exports = app; 

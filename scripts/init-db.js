@@ -15,6 +15,9 @@ const CustomsDocument = require('../models/CustomsDocument');
 const ShipmentTracking = require('../models/ShipmentTracking');
 const TrackingHistory = require('../models/TrackingHistory');
 const CategoryTranslation = require('../models/CategoryTranslation');
+const MallUser = require('../models/MallUser');
+const MallAddress = require('../models/MallAddress');
+const MallCartItem = require('../models/MallCartItem');
 
 async function initDatabase() {
   try {
@@ -332,6 +335,89 @@ async function initDatabase() {
       });
     }
 
+    console.log('Creating mall users...');
+    const mallUsers = await MallUser.bulkCreate([
+      {
+        username: 'testuser',
+        password: '123456', // 密码会在模型中自动加密
+        email: 'test@example.com',
+        mobile: '13800138000',
+        status: true
+      },
+      {
+        username: 'malluser1',
+        password: '123456',
+        email: 'mall1@example.com',
+        mobile: '13800138001',
+        status: true
+      },
+      {
+        username: 'malluser2',
+        password: '123456',
+        email: 'mall2@example.com',
+        mobile: '13800138002',
+        status: true
+      }
+    ]);
+
+    // 为测试用户创建收货地址
+    console.log('Creating mall addresses...');
+    await MallAddress.bulkCreate([
+      {
+        userId: mallUsers[0].id,
+        receiverName: '张三',
+        receiverPhone: '13800138000',
+        province: '广东省',
+        city: '深圳市',
+        district: '南山区',
+        detailAddress: '科技园路1号',
+        isDefault: true
+      },
+      {
+        userId: mallUsers[0].id,
+        receiverName: '李四',
+        receiverPhone: '13800138000',
+        province: '广东省',
+        city: '广州市',
+        district: '天河区',
+        detailAddress: '天河路2号',
+        isDefault: false
+      },
+      {
+        userId: mallUsers[1].id,
+        receiverName: '王五',
+        receiverPhone: '13800138001',
+        province: '北京市',
+        city: '北京市',
+        district: '朝阳区',
+        detailAddress: '建国路3号',
+        isDefault: true
+      }
+    ]);
+
+    // 为测试用户创建购物车数据
+    console.log('Creating mall cart items...');
+    await MallCartItem.bulkCreate([
+      {
+        userId: mallUsers[0].id,
+        productId: products[0].id,
+        quantity: 2,
+        selected: true
+      },
+      {
+        userId: mallUsers[0].id,
+        productId: products[1].id,
+        quantity: 1,
+        selected: true
+      },
+      {
+        userId: mallUsers[1].id,
+        productId: products[2].id,
+        quantity: 3,
+        selected: true
+      }
+    ]);
+
     console.log('Database initialized successfully');
   } catch (error) {
     console.error('Database initialization failed:', error);
@@ -339,4 +425,4 @@ async function initDatabase() {
   }
 }
 
-initDatabase(); 
+initDatabase();

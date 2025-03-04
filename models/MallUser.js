@@ -2,7 +2,7 @@ const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 const bcrypt = require('bcryptjs');
 
-const MallUser = sequelize.define('MallUser', {
+const MallUser = sequelize.define('mall_user', {
   id: {
     type: DataTypes.INTEGER,
     primaryKey: true,
@@ -19,10 +19,8 @@ const MallUser = sequelize.define('MallUser', {
   password: {
     type: DataTypes.STRING,
     allowNull: false,
-    set(value) {
-      const salt = bcrypt.genSaltSync(10);
-      const hash = bcrypt.hashSync(value, salt);
-      this.setDataValue('password', hash);
+    validate: {
+      len: [6, 100]
     }
   },
   email: {
@@ -34,7 +32,7 @@ const MallUser = sequelize.define('MallUser', {
     }
   },
   mobile: {
-    type: DataTypes.STRING(20),
+    type: DataTypes.STRING(11),
     allowNull: false,
     unique: true,
     validate: {
@@ -43,21 +41,42 @@ const MallUser = sequelize.define('MallUser', {
   },
   avatar: {
     type: DataTypes.STRING,
-    defaultValue: 'https://example.com/default-avatar.jpg'
+    allowNull: true
   },
   status: {
     type: DataTypes.BOOLEAN,
+    allowNull: false,
     defaultValue: true
   }
 }, {
-  tableName: 'mall_users',
+  timestamps: true,
   createdAt: 'createTime',
-  updatedAt: 'updateTime'
+  updatedAt: 'updateTime',
+  indexes: [
+    {
+      unique: true,
+      fields: ['username']
+    },
+    {
+      unique: true,
+      fields: ['email']
+    },
+    {
+      unique: true,
+      fields: ['mobile']
+    }
+  ]
 });
 
-// 实例方法
-MallUser.prototype.validatePassword = function(password) {
-  return bcrypt.compareSync(password, this.password);
+// 密码加密
+MallUser.beforeCreate(async (user) => {
+  const salt = await bcrypt.genSalt(10);
+  user.password = await bcrypt.hash(user.password, salt);
+});
+
+// 密码验证方法
+MallUser.prototype.validatePassword = async function(password) {
+  return await bcrypt.compare(password, this.password);
 };
 
 module.exports = MallUser; 
