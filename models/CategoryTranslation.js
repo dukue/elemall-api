@@ -11,7 +11,7 @@ const CategoryTranslation = sequelize.define('CategoryTranslation', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: 'Categories',
+      model: 'categories',
       key: 'id'
     },
     onUpdate: 'CASCADE',
@@ -21,7 +21,7 @@ const CategoryTranslation = sequelize.define('CategoryTranslation', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: 'Languages',
+      model: 'languages',
       key: 'id'
     },
     onUpdate: 'CASCADE',
@@ -48,6 +48,7 @@ const CategoryTranslation = sequelize.define('CategoryTranslation', {
     allowNull: true
   }
 }, {
+  tableName: 'categorytranslations',
   createdAt: 'createTime',
   updatedAt: 'updateTime',
   indexes: [

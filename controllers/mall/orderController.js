@@ -50,10 +50,26 @@ exports.createOrder = async (req, res) => {
         });
       }
 
+      // 获取商品翻译信息
+      const productTranslation = await ProductTranslation.findOne({
+        where: {
+          productId: item.productId,
+          languageId: 1 // 默认使用中文
+        }
+      });
+
+      if (!productTranslation) {
+        await transaction.rollback();
+        return res.status(400).json({
+          code: 400,
+          message: `商品ID ${item.productId} 的翻译信息不存在`
+        });
+      }
+
       const subtotal = Number(product.price) * item.quantity;
       orderItems.push({
         productId: product.id,
-        productName: product.name,
+        productName: productTranslation.name,
         productImage: product.image,
         price: product.price,
         quantity: item.quantity,
@@ -82,7 +98,12 @@ exports.createOrder = async (req, res) => {
     await MallOrderItem.bulkCreate(
       orderItems.map(item => ({
         orderId: order.id,
-        ...item
+        productId: item.productId,
+        productName: item.productName,
+        productImage: item.productImage,
+        price: item.price,
+        quantity: item.quantity,
+        subtotal: item.subtotal
       })),
       { transaction }
     );
@@ -271,14 +292,11 @@ exports.confirmOrder = async (req, res) => {
     if (!canConfirmOrder(order.status)) {
       return res.status(400).json({
         code: 400,
-        message: '只能确认已发货的订单'
+        message: '当前订单状态不可确认收货'
       });
     }
 
-    await order.update({
-      status: ORDER_STATUS.COMPLETED,
-      completeTime: new Date()
-    });
+    await order.update({ status: ORDER_STATUS.COMPLETED });
 
     res.status(200).json({
       code: 200,

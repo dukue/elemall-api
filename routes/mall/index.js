@@ -4,6 +4,8 @@ const authRoutes = require('./auth');
 const addressRoutes = require('./address');
 const cartRoutes = require('./cart');
 const orderRoutes = require('./order');
+const categoryRoutes = require('./category');
+const productRoutes = require('./product');
 
 // 用户相关路由
 router.use('/', authRoutes);
@@ -13,5 +15,9 @@ router.use('/', addressRoutes);
 router.use('/', cartRoutes);
 // 订单相关路由
 router.use('/', orderRoutes);
+// 分类相关路由
+router.use('/', categoryRoutes);
+// 商品相关路由
+router.use('/', productRoutes);
 
 module.exports = router; 

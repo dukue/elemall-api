@@ -18,6 +18,10 @@ const CategoryTranslation = require('../models/CategoryTranslation');
 const MallUser = require('../models/MallUser');
 const MallAddress = require('../models/MallAddress');
 const MallCartItem = require('../models/MallCartItem');
+const MallOrder = require('../models/MallOrder');
+const MallOrderItem = require('../models/MallOrderItem');
+const { generateOrderNo } = require('../utils/orderUtils');
+const Sequelize = require('sequelize');
 
 async function initDatabase() {
   try {
@@ -415,6 +419,72 @@ async function initDatabase() {
         productId: products[2].id,
         quantity: 3,
         selected: true
+      }
+    ]);
+
+    // 创建示例订单数据
+    console.log('Creating sample mall orders...');
+    const sampleOrders = await MallOrder.bulkCreate([
+      {
+        orderNo: generateOrderNo('MALL'),
+        userId: mallUsers[0].id,
+        totalAmount: 599.00,
+        status: 'pending',
+        payMethod: 'alipay',
+        receiverName: '张三',
+        receiverPhone: '13800138000',
+        province: '广东省',
+        city: '深圳市',
+        district: '南山区',
+        detailAddress: '科技园路1号',
+        remark: '请尽快发货'
+      },
+      {
+        orderNo: generateOrderNo('MALL'),
+        userId: mallUsers[1].id,
+        totalAmount: 299.00,
+        status: 'paid',
+        payMethod: 'wechat',
+        payTime: new Date(),
+        receiverName: '李四',
+        receiverPhone: '13800138001',
+        province: '北京市',
+        city: '北京市',
+        district: '朝阳区',
+        detailAddress: '建国路3号',
+        remark: '周末送货'
+      }
+    ]);
+
+    // 创建示例订单商品数据
+    console.log('Creating sample mall order items...');
+    await MallOrderItem.bulkCreate([
+      {
+        orderId: sampleOrders[0].id,
+        productId: products[0].id,
+        productName: '示例商品1',
+        productImage: 'uploads/products/product-1.jpg',
+        price: 299.00,
+        quantity: 1,
+        subtotal: 299.00
+      },
+      {
+        orderId: sampleOrders[0].id,
+        productId: products[1].id,
+        productName: '示例商品2',
+        productImage: 'uploads/products/product-2.jpg',
+        price: 300.00,
+        quantity: 1,
+        subtotal: 300.00
+      },
+      {
+        orderId: sampleOrders[1].id,
+        productId: products[2].id,
+        productName: '示例商品3',
+        productImage: 'uploads/products/product-3.jpg',
+        price: 299.00,
+        quantity: 1,
+        subtotal: 299.00
       }
     ]);
 
