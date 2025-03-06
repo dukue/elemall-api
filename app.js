@@ -29,7 +29,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // 添加静态文件服务
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/api/v1/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // API路由
 app.use('/api/v1/auth', authRoutes);

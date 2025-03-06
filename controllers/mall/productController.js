@@ -10,8 +10,15 @@ const Warehouse = require('../../models/Warehouse');
 
 /**
  * 获取商品列表
- * @param {Object} req
- * @param {Object} res
+ * @param {Object} req - 请求对象
+ * @param {Object} req.query - 查询参数
+ * @param {string} [req.query.category] - 分类ID
+ * @param {string} [req.query.keyword] - 搜索关键词
+ * @param {number} [req.query.page=1] - 页码
+ * @param {number} [req.query.pageSize=10] - 每页数量
+ * @param {string} [req.query.sort='createTime_desc'] - 排序方式：price_asc/price_desc/sales_desc/createTime_desc
+ * @param {string} [req.query.lang='zh'] - 语言代码
+ * @param {Object} res - 响应对象
  */
 exports.getProducts = async (req, res) => {
   try {
@@ -42,6 +49,17 @@ exports.getProducts = async (req, res) => {
     const whereClause = {
       status: true  // 只查询上架商品
     };
+
+    // 如果指定了分类ID，验证分类是否存在
+    if (category) {
+      const categoryExists = await Category.findByPk(category);
+      if (!categoryExists) {
+        return res.status(400).json({
+          code: 400,
+          message: '指定的分类不存在'
+        });
+      }
+    }
 
     // 构建排序条件
     let order = [];
