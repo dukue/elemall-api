@@ -1,33 +1,10 @@
----
-title: 电商毕设
-language_tabs:
-  - shell: Shell
-  - http: HTTP
-  - javascript: JavaScript
-  - ruby: Ruby
-  - python: Python
-  - php: PHP
-  - java: Java
-  - go: Go
-toc_footers: []
-includes: []
-search: true
-code_clipboard: true
-highlight_theme: darkula
-headingLevel: 2
-generator: "@tarslib/widdershins v4.0.28"
-
----
-
-# 电商毕设
+# ele_mall前台APi
 
 Base URLs:
 
 * <a href="http://localhost:3000/api/v1">开发环境: http://localhost:3000/api/v1</a>
 
 # Authentication
-
-# Default
 
 ## POST 登录
 
@@ -4491,6 +4468,3 @@ GET /products/3/inventory/transactions
 |»»» reason|string|false|none||none|
 |»»» operatorId|integer|false|none||none|
 |»»» createTime|string|false|none||none|
-
-# 数据模型
-

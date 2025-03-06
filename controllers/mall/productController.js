@@ -1,29 +1,47 @@
-const { Product, ProductTranslation, Category, CategoryTranslation } = require('../../models/Product');
-const { Op } = require('sequelize');
+const { Op, fn, col, literal } = require('sequelize');
+const sequelize = require('../../config/database');
+const Product = require('../../models/Product');
+const ProductTranslation = require('../../models/ProductTranslation');
+const Category = require('../../models/Category');
+const CategoryTranslation = require('../../models/CategoryTranslation');
+const Language = require('../../models/Language');
+const Inventory = require('../../models/Inventory');
+const Warehouse = require('../../models/Warehouse');
 
+/**
+ * 获取商品列表
+ * @param {Object} req
+ * @param {Object} res
+ */
 exports.getProducts = async (req, res) => {
   try {
-    const {
-      categoryId,
-      query,
-      sort = 'new',
-      minPrice,
-      maxPrice,
-      pagenum = 1,
-      pagesize = 10,
-      lang = 'zh'
+    const { 
+      category,
+      keyword,
+      page = 1, 
+      pageSize = 10,
+      sort = 'createTime_desc',
+      lang = 'zh'  // 默认中文
     } = req.query;
 
+    const offset = (page - 1) * pageSize;
+
+    // 获取指定语言
+    const language = await Language.findOne({
+      where: { code: lang }
+    });
+
+    if (!language) {
+      return res.status(400).json({
+        code: 400,
+        message: '不支持的语言代码'
+      });
+    }
+
     // 构建查询条件
-    const where = {};
-    if (categoryId) {
-      where.categoryId = categoryId;
-    }
-    if (minPrice || maxPrice) {
-      where.price = {};
-      if (minPrice) where.price[Op.gte] = minPrice;
-      if (maxPrice) where.price[Op.lte] = maxPrice;
-    }
+    const whereClause = {
+      status: true  // 只查询上架商品
+    };
 
     // 构建排序条件
     let order = [];
@@ -37,86 +55,167 @@ exports.getProducts = async (req, res) => {
       case 'sales_desc':
         order.push(['sales', 'DESC']);
         break;
-      case 'new':
+      default:
         order.push(['createTime', 'DESC']);
-        break;
     }
 
-    // 查询商品
-    const { count, rows } = await Product.findAndCountAll({
-      where,
+    // 先查询符合条件的商品ID列表
+    const productIds = await Product.findAll({
+      attributes: ['id'],
+      where: whereClause,
       include: [
         {
           model: ProductTranslation,
-          where: { 
-            languageCode: lang,
-            ...(query && {
+          where: {
+            languageId: language.id,
+            ...(keyword && {
               [Op.or]: [
-                { name: { [Op.like]: `%${query}%` } },
-                { description: { [Op.like]: `%${query}%` } }
+                { name: { [Op.like]: `%${keyword}%` } },
+                { description: { [Op.like]: `%${keyword}%` } }
               ]
             })
           },
-          attributes: ['name', 'description']
+          required: true
+        },
+        {
+          model: Category,
+          where: category ? { id: category } : {},
+          required: category ? true : false
+        }
+      ]
+    }).then(results => results.map(r => r.id));
+
+    // 如果没有找到商品，直接返回空列表
+    if (productIds.length === 0) {
+      return res.json({
+        code: 200,
+        data: {
+          total: 0,
+          list: []
+        }
+      });
+    }
+
+    // 查询商品详细信息
+    const products = await Product.findAll({
+      where: {
+        id: { [Op.in]: productIds }
+      },
+      include: [
+        {
+          model: ProductTranslation,
+          where: { languageId: language.id },
+          required: true
+        },
+        {
+          model: Category,
+          include: [{
+            model: CategoryTranslation,
+            where: { languageId: language.id },
+            required: false
+          }]
         }
       ],
       order,
-      offset: (pagenum - 1) * pagesize,
-      limit: pagesize
+      offset: Number(offset),
+      limit: Number(pageSize)
     });
 
-    // 格式化返回数据
-    const products = rows.map(product => ({
+    // 查询商品库存
+    const inventories = await Inventory.findAll({
+      attributes: [
+        'productId',
+        [fn('SUM', col('quantity')), 'totalStock']
+      ],
+      where: {
+        productId: { [Op.in]: productIds }
+      },
+      group: ['productId']
+    });
+
+    // 创建库存映射
+    const stockMap = inventories.reduce((map, inv) => {
+      map[inv.productId] = inv.get('totalStock') || 0;
+      return map;
+    }, {});
+
+    // 格式化响应数据
+    const formattedProducts = products.map(product => ({
       id: product.id,
       name: product.ProductTranslations[0].name,
-      price: product.price,
-      originalPrice: product.originalPrice,
       description: product.ProductTranslations[0].description,
-      mainImage: product.mainImage,
-      images: product.images,
-      sales: product.sales,
-      rating: product.rating,
-      reviewCount: product.reviewCount
+      price: product.price,
+      image: product.image,
+      sales: product.sales || 0,
+      stock: stockMap[product.id] || 0,
+      category: product.Category ? {
+        id: product.Category.id,
+        name: product.Category.CategoryTranslations[0]?.name
+      } : null
     }));
 
     res.json({
       code: 200,
-      message: '获取商品列表成功',
       data: {
-        total: count,
-        products
+        total: productIds.length,
+        list: formattedProducts
       }
     });
   } catch (error) {
     console.error('Get products error:', error);
     res.status(500).json({
       code: 500,
-      message: '服务器错误'
+      message: error.message || '服务器错误'
     });
   }
 };
 
+/**
+ * 获取商品详情
+ * @param {Object} req
+ * @param {Object} res
+ */
 exports.getProductDetail = async (req, res) => {
   try {
     const { id } = req.params;
     const { lang = 'zh' } = req.query;
 
-    const product = await Product.findByPk(id, {
+    // 获取指定语言
+    const language = await Language.findOne({
+      where: { code: lang }
+    });
+
+    if (!language) {
+      return res.status(400).json({
+        code: 400,
+        message: '不支持的语言代码'
+      });
+    }
+
+    // 查询商品详情
+    const product = await Product.findOne({
+      where: { 
+        id,
+        status: true  // 只能查看上架商品
+      },
       include: [
         {
           model: ProductTranslation,
-          where: { languageCode: lang },
-          attributes: ['name', 'description']
+          where: { languageId: language.id },
+          required: true
         },
         {
           model: Category,
-          include: [
-            {
-              model: CategoryTranslation,
-              where: { languageCode: lang },
-              attributes: ['name']
-            }
-          ]
+          include: [{
+            model: CategoryTranslation,
+            where: { languageId: language.id },
+            required: false
+          }]
+        },
+        {
+          model: Inventory,
+          include: [Warehouse],
+          required: false
         }
       ]
     });
@@ -124,40 +223,45 @@ exports.getProductDetail = async (req, res) => {
     if (!product) {
       return res.status(404).json({
         code: 404,
-        message: '商品不存在'
+        message: '商品不存在或已下架'
       });
     }
 
-    // 格式化返回数据
+    // 计算总库存
+    const totalStock = product.Inventories.reduce((sum, inv) => sum + inv.quantity, 0);
+
+    // 格式化响应数据
     const formattedProduct = {
       id: product.id,
       name: product.ProductTranslations[0].name,
-      price: product.price,
-      originalPrice: product.originalPrice,
       description: product.ProductTranslations[0].description,
-      mainImage: product.mainImage,
-      images: product.images,
-      specifications: product.specifications,
-      sales: product.sales,
-      rating: product.rating,
-      reviewCount: product.reviewCount,
-      stock: product.stock,
-      category: {
+      price: product.price,
+      images: product.images || [product.image],
+      sales: product.sales || 0,
+      stock: totalStock,
+      category: product.Category ? {
         id: product.Category.id,
-        name: product.Category.CategoryTranslations[0].name
-      }
+        name: product.Category.CategoryTranslations[0]?.name
+      } : null,
+      specifications: product.ProductTranslations[0].specifications,
+      details: product.ProductTranslations[0].description,
+      // 库存信息
+      warehouses: product.Inventories.map(inv => ({
+        id: inv.Warehouse.id,
+        name: inv.Warehouse.name,
+        stock: inv.quantity
+      }))
     };
 
     res.json({
       code: 200,
-      message: '获取商品详情成功',
       data: formattedProduct
     });
   } catch (error) {
     console.error('Get product detail error:', error);
     res.status(500).json({
       code: 500,
-      message: '服务器错误'
+      message: error.message || '服务器错误'
     });
   }
-}; 
+};
