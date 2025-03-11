@@ -43,6 +43,11 @@ const Product = sequelize.define('Product', {
     type: DataTypes.JSON,
     allowNull: true,
     comment: '商品图片集合'
+  },
+  sales: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    comment: '商品销量'
   }
 }, {
   createdAt: 'createTime',

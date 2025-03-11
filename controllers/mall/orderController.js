@@ -274,12 +274,17 @@ exports.cancelOrder = async (req, res) => {
 
 // 确认收货
 exports.confirmOrder = async (req, res) => {
+  const transaction = await sequelize.transaction();
   try {
     const userId = req.user.id;
     const { orderId } = req.params;
 
     const order = await MallOrder.findOne({
-      where: { orderNo: orderId, userId }
+      where: { orderNo: orderId, userId },
+      include: [{
+        model: MallOrderItem,
+        as: 'items'
+      }]
     });
 
     if (!order) {
@@ -296,13 +301,31 @@ exports.confirmOrder = async (req, res) => {
       });
     }
 
-    await order.update({ status: ORDER_STATUS.COMPLETED });
+    // 更新订单状态
+    await order.update({ 
+      status: ORDER_STATUS.COMPLETED,
+      completeTime: new Date()
+    }, { transaction });
+
+    // 更新商品销量
+    for (const item of order.items) {
+      await Product.increment(
+        { sales: item.quantity },
+        { 
+          where: { id: item.productId },
+          transaction
+        }
+      );
+    }
+
+    await transaction.commit();
 
     res.status(200).json({
       code: 200,
       message: '确认收货成功'
     });
   } catch (error) {
+    await transaction.rollback();
     console.error('确认收货失败:', error);
     res.status(500).json({
       code: 500,
